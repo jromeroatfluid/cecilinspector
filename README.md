@@ -1,73 +1,58 @@
 # CecilInspector
 
-CecilInspector is a lightweight CLI tool built in C# using Mono.Cecil that extracts all public types (classes, interfaces, etc.) from a .NET assembly (.dll). It outputs a JSON array listing the fully qualified names of the exported types.
+CecilInspector is a small C# utility that analyzes a `.nupkg` (NuGet package) and extracts all its defined classes and namespaces using [Mono.Cecil](https://www.mono-project.com/docs/tools+libraries/libraries/Mono.Cecil/). The output is printed to stdout and can be consumed by other tools via subprocess.
 
-This tool is primarily used in static reachability analysis to identify which types a given NuGet package exposes — enabling precise import resolution for SCA pipelines.
+This version is set up to be compiled using [Nix](https://nixos.org) with `buildDotnetModule`, and includes pinned dependencies via `nugetDeps`.
 
-## 🧰 Dependencies
+## How it works
 
-- [.NET SDK 7.0+ or 8.0+](https://dotnet.microsoft.com/en-us/download)
-- [Mono.Cecil](https://www.nuget.org/packages/Mono.Cecil) (installed via NuGet)
+It loads a `.nupkg` file, opens the `.dll` inside it, and uses Mono.Cecil to iterate over its types and namespaces. Results are printed as simple text lines.
 
-## 🛠 Build instructions
+## Build with Nix
 
-To build a self-contained binary for Linux or macOS:
-
-```bash
-dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o ./dist
-```
-
-For macOS:
+To build the binary with Nix, make sure you're in the root of the project directory and run:
 
 ```bash
-dotnet publish -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -o ./dist
+nix-build -A passthru.fetch-deps
+nix-build
 ```
 
-The binary will be available at:
+This will:
+1. Fetch the NuGet dependencies and write them to `deps.nix`
+2. Build the `CecilInspector` binary under the `./result/bin/` directory
 
-```
-./dist/CecilInspector
-```
+### Sample `default.nix`
 
-Make it executable if needed:
-
-```bash
-chmod +x ./dist/CecilInspector
-```
-
-## 🚀 Usage
-
-Run it against a NuGet .dll file:
-
-```bash
-./CecilInspector path/to/library.dll
-```
-
-Output:
-
-```json
-{
-  "types": [
-    "DocumentFormat.OpenXml.Spreadsheet.Worksheet",
-    "DocumentFormat.OpenXml.Wordprocessing.Paragraph"
-  ]
+```nix
+let
+  nixpkgs = builtins.fetchTarball "https://github.com/nixos/nixpkgs/archive/ab472a7a8fcfd7c778729e7d7c8c3a9586a7cded.tar.gz";
+  pkgs  = import nixpkgs {};
+in
+pkgs.buildDotnetModule {
+  pname = "cecilinspector";
+  version = "0.0.1";
+  src = ./.;
+  dotnet-sdk = pkgs.dotnetCorePackages.sdk_8_0;
+  dotnet-runtime = pkgs.dotnetCorePackages.runtime_8_0;
+  nugetDeps = ./deps.nix;
+  projectFile = "CecilInspector.csproj";
 }
 ```
 
-## 📦 Integration
+## Usage
 
-This tool is meant to be used from Python scripts via subprocess. Example in Python:
-
-```python
-result = subprocess.run(
-    ["./cecilinspector", "lib.dll"],
-    stdout=subprocess.PIPE,
-    check=True,
-    text=True
-)
-types = json.loads(result.stdout)["types"]
+```bash
+CecilInspector path/to/package.nupkg
 ```
 
-## 📝 License
+## Example Output
 
-Internal use only – proprietary.
+```
+System.Text.Json
+System.Text.Json.Serialization
+System.Text.Json.Serialization.JsonConverter
+```
+
+## License
+
+MIT
